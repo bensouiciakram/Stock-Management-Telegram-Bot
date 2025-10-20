@@ -35,6 +35,7 @@ HELP_TEXT = """*
 
 🧑‍💼 *Admin Commands* (Main admin only)
 • `/add_admin <admin_name>` — Add a new admin
+• `/list_admins` — View all admins
 
 📦 *Request Commands*
 • `/add_request <nut_name> <packages> <credit_paid> [description]` — Record a new request
@@ -62,6 +63,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await nut_cmds.list_cmd(update, context)
     elif data == "add_admin":
         await query.edit_message_text("Use `/add_admin <admin_name>`", parse_mode="Markdown")
+    elif data == "list_admins":
+        await admin_cmds.list_cmd(update, context)
     elif data == "add_request":
         await query.edit_message_text("Use `/add_request <nut_name> <packages> <credit_paid> [description]`", parse_mode="Markdown")
     elif data == "list_requests":
@@ -91,10 +94,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("🧑‍💼 Add Admin", callback_data="add_admin")
         ],
         [
-            InlineKeyboardButton("📩 Add Request", callback_data="add_request"),
-            InlineKeyboardButton("📜 List Requests", callback_data="list_requests")
+            InlineKeyboardButton("📋 List Admins", callback_data="list_admins"),
+            InlineKeyboardButton(" Add Request", callback_data="add_request")
         ],
-        [InlineKeyboardButton("❓ Help", callback_data="help")]
+        [
+            InlineKeyboardButton("📜 List Requests", callback_data="list_requests"),
+            InlineKeyboardButton("❓ Help", callback_data="help")
+        ]
     ]
 
     reply_markup = InlineKeyboardMarkup(keyboard)

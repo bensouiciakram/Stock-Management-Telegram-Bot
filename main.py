@@ -60,6 +60,7 @@ async def main():
 
     # Admin commands
     app.add_handler(admin_cmds.generate_add_conversation_handler())
+    app.add_handler(CommandHandler("list_admins", admin_cmds.list_cmd))
 
     # Request commands
     app.add_handler(request_cmds.generate_add_conversation_handler())
