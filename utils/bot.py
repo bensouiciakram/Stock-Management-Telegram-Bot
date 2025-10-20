@@ -60,13 +60,15 @@ class BaseCommand(ABC):
     async def start_interactive_add(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if update.callback_query:
             await update.callback_query.answer()
-            await update.callback_query.message.reply_text(f"Please enter the {self.model_name}'s name:")
+            await update.callback_query.message.reply_text(f"Please enter the {self.model_name}'s name:")\
+                if not self.model_name == 'request' else\
+                await update.callback_query.message.reply_text(f"Please enter the nut's name:")
         else:
             await self.send_message(update, f"Please enter the {self.model_name}'s name:")
         return self.states_keys[0]
     
     async def cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        keys_to_remove = [k for k in context.user_data if 'self.model_name' in k]
+        keys_to_remove = [k for k in context.user_data if self.model_name in k]
         for k in keys_to_remove:
             del context.user_data[k]
         await self.send_message(update, f"❌ Add {self.model_name} cancelled.")
@@ -179,6 +181,46 @@ class NutCommands(BaseCommand):
         await self.db.add(name=name, packages=packages)
         await self.send_message(update, f"🥜 Nut '{name}' added with {packages} packages.")
 
+    def define_states(self):
+        # states: ask for nut name, then packages
+        self.NAME, self.PACKAGES = range(2)
+        self.states = {
+            self.NAME: self.receive_name,
+            self.PACKAGES: self.receive_packages
+        }
+
+    async def receive_name(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not update.message or not update.message.text:
+            await self.send_message(update, "❌ Invalid name. Please send the nut name as text.")
+            return self.NAME
+
+        name = update.message.text.strip()
+        context.user_data['new_nut_name'] = name
+        await update.message.reply_text("Please enter packages count (integer). Send 0 for none:")
+        return self.PACKAGES
+
+    async def receive_packages(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not update.message or not update.message.text:
+            await self.send_message(update, "❌ Invalid packages. Please send an integer.")
+            return self.PACKAGES
+
+        text = update.message.text.strip()
+        try:
+            packages = int(text)
+        except ValueError:
+            await update.message.reply_text("❌ Invalid number. Please enter a valid integer for packages (e.g. 10 or 0):")
+            return self.PACKAGES
+
+        name = context.user_data.get('new_nut_name')
+        if not name:
+            await update.message.reply_text("❌ Missing nut name. Please start again with /add_nut or the button.")
+            return ConversationHandler.END
+
+        await self.db.add(name=name, packages=packages)
+        await update.message.reply_text(f"🥜 Nut '{name}' added with {packages} packages.")
+        context.user_data.pop('new_nut_name', None)
+        return ConversationHandler.END
+
     async def list_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         nuts = await self.db.list()
         if not nuts:
@@ -204,6 +246,27 @@ class AdminCommands(BaseCommand):
         await self.db.add(name)
         await self.send_message(update,f"✅ Admin '{name}' added successfully.")
 
+    def define_states(self):
+        # only need the admin name
+        self.NAME = 0
+        self.states = {self.NAME: self.receive_name}
+
+    async def start_interactive_add(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        # Only allow main admin to add new admins interactively
+        if str(update.effective_user.id) != str(MAIN_ADMIN_ID):
+            return await self.send_message(update, "❌ You are not authorized to add admins.")
+        return await super().start_interactive_add(update, context)
+
+    async def receive_name(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not update.message or not update.message.text:
+            await self.send_message(update, "❌ Invalid name. Please send the admin's name as text.")
+            return self.NAME
+
+        name = update.message.text.strip()
+        await self.db.add(name=name)
+        await self.send_message(update, f"✅ Admin '{name}' added successfully.")
+        return ConversationHandler.END
+
     async def list_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         admins = await self.db.list()
         if not admins:
@@ -217,7 +280,9 @@ class RequestCommands(BaseCommand):
 
     def __init__(self,request_db):
         super().__init__(request_db)
-        self.nuts_db = NutDbService('nuts')
+        self.nuts_db = NutDbService('nut')
+        # Admins DB used to validate the admin making the request
+        self.admins_db = AdminDbService('admin')
 
     async def add_cmd(self,update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
@@ -232,7 +297,7 @@ class RequestCommands(BaseCommand):
         admin_name = update.effective_user.full_name
 
         # Verify admin is predefined in DB
-        admin = await self.db.get(admin_name)
+        admin = await self.admins_db.get(admin_name)
         if not admin:
             return await self.send_message(update,"❌ You are not authorized to make requests. Contact the main admin to be added.")
 
@@ -273,6 +338,105 @@ class RequestCommands(BaseCommand):
                     f"Note: {description or '-'}"
                 )
             )
+
+    def define_states(self):
+        # states: nut name, packages, credit_paid, description
+        self.NUT_NAME, self.PACKAGES, self.CREDIT_PAID, self.DESCRIPTION = range(4)
+        self.states = {
+            self.NUT_NAME: self.receive_nut_name,
+            self.PACKAGES: self.receive_packages,
+            self.CREDIT_PAID: self.receive_credit_paid,
+            self.DESCRIPTION: self.receive_description
+        }
+
+    async def start_interactive_add(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        # Verify user is a predefined admin before starting the request flow
+        admin_name = update.effective_user.full_name
+        # Akram Brnsouici
+        admin = await self.admins_db.get(name=admin_name)
+        if not admin:
+            return await self.send_message(update, "❌ You are not authorized to make requests. Contact the main admin to be added.")
+        return await super().start_interactive_add(update, context)
+
+    async def receive_nut_name(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not update.message or not update.message.text:
+            await self.send_message(update, "❌ Invalid nut name. Please send the nut name as text.")
+            return self.NUT_NAME
+
+        nut_name = update.message.text.strip()
+        context.user_data['new_request_nut_name'] = nut_name
+        await update.message.reply_text("Please enter number of packages (integer):")
+        return self.PACKAGES
+
+    async def receive_packages(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not update.message or not update.message.text:
+            await self.send_message(update, "❌ Invalid packages. Please send an integer.")
+            return self.PACKAGES
+
+        try:
+            packages = int(update.message.text.strip())
+        except ValueError:
+            await update.message.reply_text("❌ Invalid number. Please enter an integer for packages:")
+            return self.PACKAGES
+
+        context.user_data['new_request_packages'] = packages
+        await update.message.reply_text("Please enter credit paid (number):")
+        return self.CREDIT_PAID
+
+    async def receive_credit_paid(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not update.message or not update.message.text:
+            await self.send_message(update, "❌ Invalid credit. Please send a number.")
+            return self.CREDIT_PAID
+
+        try:
+            credit_paid = float(update.message.text.strip())
+        except ValueError:
+            await update.message.reply_text("❌ Invalid number. Please enter a valid credit amount:")
+            return self.CREDIT_PAID
+
+        context.user_data['new_request_credit_paid'] = credit_paid
+        await update.message.reply_text("Optional: enter a description or send /skip to leave blank:")
+        return self.DESCRIPTION
+
+    async def receive_description(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        # description can be empty
+        description = update.message.text.strip() if update.message and update.message.text else ""
+
+        nut_name = context.user_data.get('new_request_nut_name')
+        packages = context.user_data.get('new_request_packages')
+        credit_paid = context.user_data.get('new_request_credit_paid')
+
+        admin_name = update.effective_user.full_name
+        admin = await self.admins_db.get(admin_name)
+        if not admin:
+            await self.send_message(update, "❌ You are not authorized to make requests. Contact the main admin to be added.")
+            return ConversationHandler.END
+
+        nut = await self.nuts_db.get(nut_name)
+        if not nut:
+            await self.send_message(update, "❌ Nut not found. Add it first with /add_nut.")
+            return ConversationHandler.END
+
+        await self.db.add(admin_id=admin[0],nut_id=nut[0],packages=packages,credit_paid=credit_paid, description=description)
+
+        await self.send_message(update, f"✅ Request recorded by {admin_name} for {packages} × {nut_name} (paid: {credit_paid}).")
+
+        if MAIN_ADMIN_ID:
+            await context.bot.send_message(
+                chat_id=MAIN_ADMIN_ID,
+                text=(
+                    f"📩 New request from {admin_name}\n"
+                    f"Nut: {nut_name}\n"
+                    f"Packages: {packages}\n"
+                    f"Credit Paid: {credit_paid}\n"
+                    f"Note: {description or '-'}"
+                )
+            )
+
+        # cleanup
+        for k in ('new_request_nut_name', 'new_request_packages', 'new_request_credit_paid'):
+            context.user_data.pop(k, None)
+        return ConversationHandler.END
 
     async def list_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         requests = await self.db.list()

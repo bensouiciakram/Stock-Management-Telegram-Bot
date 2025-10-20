@@ -55,14 +55,14 @@ async def main():
     app.add_handler(CommandHandler("update_credit", client_cmds.update_credit_cmd))
 
     # Nut commands
-    app.add_handler(CommandHandler("add_nut", nut_cmds.add_cmd))
+    app.add_handler(nut_cmds.generate_add_conversation_handler())
     app.add_handler(CommandHandler("list_nuts", nut_cmds.list_cmd))
 
     # Admin commands
-    app.add_handler(CommandHandler("add_admin", admin_cmds.add_cmd))
+    app.add_handler(admin_cmds.generate_add_conversation_handler())
 
     # Request commands
-    app.add_handler(CommandHandler("add_request", request_cmds.add_cmd))
+    app.add_handler(request_cmds.generate_add_conversation_handler())
     app.add_handler(CommandHandler("list_requests", request_cmds.list_cmd))
 
     # help commands: 

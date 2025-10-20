@@ -40,8 +40,8 @@ async def init_db():
                 packages INTEGER NOT NULL,
                 credit_paid REAL DEFAULT 0,
                 description TEXT,
-                FOREIGN KEY (admin_id) REFERENCES admins(id),
-                FOREIGN KEY (nut_id) REFERENCES nuts(id)
+                FOREIGN KEY (admin_id) REFERENCES admin(id),
+                FOREIGN KEY (nut_id) REFERENCES nut(id)
             )
         """)
         await db.commit()
@@ -51,7 +51,9 @@ class BaseDbService :
         self.table_name = table_name
 
     def get_add_query(self,**kwargs) -> str :
-        return f"INSERT OR IGNORE INTO {self.table_name} ({','.join(kwargs.keys())}) VALUES (?, ?)"
+        keys = kwargs.keys()
+        keys_length = len(keys)
+        return f"INSERT OR IGNORE INTO {self.table_name} ({','.join(keys)}) VALUES ({','.join('?'*keys_length)})"
 
     async def add(self,**kwargs):
         async with aiosqlite.connect(DB_NAME) as db:
@@ -63,12 +65,12 @@ class BaseDbService :
 
     async def list(self):
         async with aiosqlite.connect(DB_NAME) as db:
-            cursor = await db.execute(f"SELECT id, name, credit FROM {self.table_name}")
+            cursor = await db.execute(f"SELECT * FROM {self.table_name}")
             return await cursor.fetchall()
         
     async def get(self,name:str):
         async with aiosqlite.connect(DB_NAME) as db:
-            cursor = await db.execute("SELECT * FROM clients WHERE name=?", (name,))
+            cursor = await db.execute(f"SELECT * FROM {self.table_name} WHERE name=?", (name,))
             return await cursor.fetchone()
         
 
