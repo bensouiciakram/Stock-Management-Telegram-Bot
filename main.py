@@ -3,7 +3,7 @@
 import asyncio
 from utils.database import init_db
 from telegram import Update,InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import Application, CommandHandler, ContextTypes,CallbackQueryHandler
+from telegram.ext import Application, CommandHandler, ContextTypes,CallbackQueryHandler, ConversationHandler, MessageHandler, filters
 from utils.config import TOKEN
 from utils.ui_helper import (
     button_handler,
@@ -23,10 +23,10 @@ from utils.bot import (
     RequestCommands
 )
 
-client_cmds = ClientCommands(ClientDbService('clients'))
-admin_cmds = AdminCommands(AdminDbService('admins'))
-nut_cmds = NutCommands(NutDbService('nuts'))
-request_cmds = RequestCommands(RequestDbService('requests'))
+client_cmds = ClientCommands(ClientDbService('client'))
+admin_cmds = AdminCommands(AdminDbService('admin'))
+nut_cmds = NutCommands(NutDbService('nut'))
+request_cmds = RequestCommands(RequestDbService('request'))
 
 async def main():
     await init_db()
@@ -35,7 +35,22 @@ async def main():
 
     # Client commands
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("add_client", client_cmds.add_cmd))
+    # Conversation handler for interactive add client (asks name then credit)
+    
+    # conv_handler = ConversationHandler(
+    #     entry_points=[
+    #         CommandHandler('add_client', client_cmds.handle_add_command),
+    #         CallbackQueryHandler(client_cmds.start_interactive_add, pattern='^add_client$')
+    #     ],
+    #     states={
+    #         client_cmds.NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, client_cmds.receive_name)],
+    #         client_cmds.CREDIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, client_cmds.receive_credit)]
+    #     },
+    #     fallbacks=[CommandHandler('cancel', client_cmds.cancel)],
+    #     allow_reentry=True
+    # )
+    conv_handler = client_cmds.generate_add_conversation_handler()
+    app.add_handler(conv_handler)
     app.add_handler(CommandHandler("list_clients", client_cmds.list_cmd))
     app.add_handler(CommandHandler("update_credit", client_cmds.update_credit_cmd))
 

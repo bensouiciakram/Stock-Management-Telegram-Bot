@@ -2,9 +2,8 @@ import os
 import asyncio
 from abc import ABC, abstractmethod
 from telegram import Update,InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import Application, CommandHandler, ContextTypes,CallbackQueryHandler
+from telegram.ext import Application, CommandHandler, ContextTypes,CallbackQueryHandler, ConversationHandler, MessageHandler, filters
 from utils.config import (
-    HELP_TEXT,
     TOKEN,
     MAIN_ADMIN_ID
 )
@@ -22,6 +21,9 @@ class BaseCommand(ABC):
 
     def __init__(self, db_service):
         self.db = db_service
+        self.model_name = db_service.table_name
+        self.define_states()
+        self.states_keys = list(self.states.keys())
 
     async def send_message(self, update: Update, text: str):
         """Common helper to send messages safely."""
@@ -40,12 +42,55 @@ class BaseCommand(ABC):
         """Each subclass must implement the 'list' command."""
         pass
 
+    @abstractmethod
+    async def start_interactive_add(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Each subclass must implement the 'start_interactive_add' """
+        pass
+
+    # @abstractmethod
+    def define_states(self) -> dict:
+        """Each subclass must implement the 'define_states' for interaction """
+        self.states = {}
+
+    async def handle_add_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if context.args:
+            return await self.add_cmd(update, context)
+        return await self.start_interactive_add(update, context)
+    
+    async def start_interactive_add(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if update.callback_query:
+            await update.callback_query.answer()
+            await update.callback_query.message.reply_text(f"Please enter the {self.model_name}'s name:")
+        else:
+            await self.send_message(update, f"Please enter the {self.model_name}'s name:")
+        return self.states_keys[0]
+    
+    async def cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        keys_to_remove = [k for k in context.user_data if 'self.model_name' in k]
+        for k in keys_to_remove:
+            del context.user_data[k]
+        await self.send_message(update, f"❌ Add {self.model_name} cancelled.")
+        return ConversationHandler.END
+    
+    def generate_add_conversation_handler(self):
+        return ConversationHandler(
+        entry_points=[
+            CommandHandler(f'add_{self.model_name}', self.handle_add_command),
+            CallbackQueryHandler(self.start_interactive_add, pattern=f'^add_{self.model_name}$')
+        ],
+        states={
+            key:[MessageHandler(filters.TEXT & ~filters.COMMAND, callback)]
+            for key,callback in self.states.items()
+        },
+        fallbacks=[CommandHandler('cancel', self.cancel)],
+        allow_reentry=True
+    )
 
 
 class ClientCommands(BaseCommand):
     def __init__(self, client_db:ClientDbService):
         super().__init__(client_db)
-
+        
     async def add_cmd(self, update, context):
         if len(context.args) < 1:
             return await self.send_message(update, "Usage: /add_client <name> [credit]")
@@ -54,6 +99,49 @@ class ClientCommands(BaseCommand):
         credit = float(context.args[1]) if len(context.args) > 1 else 0
         await self.db.add(name=name, credit=credit)
         await self.send_message(update, f"✅ Client '{name}' added with credit {credit}.")
+
+    def define_states(self):
+        self.NAME, self.CREDIT = range(2)
+        self.states = {
+            self.NAME:self.receive_name,
+            self.CREDIT:self.receive_credit
+        }
+
+    async def receive_name(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Receive the client's name and prompt for credit."""
+        if not update.message or not update.message.text:
+            await self.send_message(update, "❌ Invalid name. Please send the client's name as text.")
+            return self.NAME
+
+        name = update.message.text.strip()
+        context.user_data['new_client_name'] = name
+        await update.message.reply_text("Please enter starting credit (number). Send 0 for none:")
+        return self.CREDIT
+
+    async def receive_credit(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Receive credit amount, validate, create client and finish conversation."""
+        if not update.message or not update.message.text:
+            await self.send_message(update, "❌ Invalid credit. Please send a number.")
+            return self.CREDIT
+
+        text = update.message.text.strip()
+        try:
+            credit = float(text)
+        except ValueError:
+            await update.message.reply_text("❌ Invalid number. Please enter a valid credit amount (e.g. 100 or 0):")
+            return self.CREDIT
+
+        name = context.user_data.get('new_client_name')
+        if not name:
+            await update.message.reply_text("❌ Missing client name. Please start again with /add_client or the button.")
+            return ConversationHandler.END
+
+        await self.db.add(name=name, credit=credit)
+        await update.message.reply_text(f"✅ Client '{name}' added with credit {credit}.")
+
+        # cleanup
+        context.user_data.pop('new_client_name', None)
+        return ConversationHandler.END
 
     async def list_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         clients = await self.db.list()
@@ -75,6 +163,7 @@ class ClientCommands(BaseCommand):
         
         await self.db.update(client[0], amount)
         await self.send_message(update,f"✅ Updated {name}'s credit by {amount:+}. New total: {client[2] + amount}")
+
 
 
 class NutCommands(BaseCommand):

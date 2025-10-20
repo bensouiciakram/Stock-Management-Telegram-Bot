@@ -15,10 +15,10 @@ from utils.bot import (
 )
 
 # initialisations:
-client_cmds = ClientCommands(ClientDbService('clients'))
-admin_cmds = AdminCommands(AdminDbService('admins'))
-nut_cmds = NutCommands(NutDbService('nuts'))
-request_cmds = RequestCommands(RequestDbService('requests'))
+client_cmds = ClientCommands(ClientDbService('client'))
+admin_cmds = AdminCommands(AdminDbService('admin'))
+nut_cmds = NutCommands(NutDbService('nut'))
+request_cmds = RequestCommands(RequestDbService('request'))
 
 HELP_TEXT = """*
 🧭 *Available Commands*

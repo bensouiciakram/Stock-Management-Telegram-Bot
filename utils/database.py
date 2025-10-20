@@ -7,7 +7,7 @@ async def init_db():
     async with aiosqlite.connect(DB_NAME) as db:
         # Create clients table
         await db.execute("""
-            CREATE TABLE IF NOT EXISTS clients (
+            CREATE TABLE IF NOT EXISTS client (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT UNIQUE NOT NULL,
                 credit REAL DEFAULT 0
@@ -16,7 +16,7 @@ async def init_db():
 
         # Create admins table
         await db.execute("""
-            CREATE TABLE IF NOT EXISTS admins (
+            CREATE TABLE IF NOT EXISTS admin (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT UNIQUE NOT NULL
             )
@@ -24,7 +24,7 @@ async def init_db():
 
         # Create nuts table
         await db.execute("""
-            CREATE TABLE IF NOT EXISTS nuts (
+            CREATE TABLE IF NOT EXISTS nut (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT UNIQUE NOT NULL,
                 packages INTEGER DEFAULT 0
@@ -33,7 +33,7 @@ async def init_db():
 
         # Create requests table (references both client and admin)
         await db.execute("""
-            CREATE TABLE IF NOT EXISTS requests (
+            CREATE TABLE IF NOT EXISTS request (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 admin_id INTEGER NOT NULL,
                 nut_id INTEGER NOT NULL,
@@ -48,16 +48,16 @@ async def init_db():
 
 class BaseDbService :
     def __init__(self,table_name:str):
-        self.table_name = '__table__'
+        self.table_name = table_name
 
     def get_add_query(self,**kwargs) -> str :
-        return f"INSERT OR IGNORE INTO {self.table_name} ({','.join(kwargs.keys())}) VALUES (?, ?)",
+        return f"INSERT OR IGNORE INTO {self.table_name} ({','.join(kwargs.keys())}) VALUES (?, ?)"
 
     async def add(self,**kwargs):
         async with aiosqlite.connect(DB_NAME) as db:
             await db.execute(
                 self.get_add_query(**kwargs),
-                kwargs.values()
+                list(kwargs.values())
             )
             await db.commit()
 
@@ -74,6 +74,9 @@ class BaseDbService :
 
 class ClientDbService(BaseDbService):
 
+    def __init__(self,table_name:str):
+        super().__init__(table_name=table_name)
+
     async def update(self,client_id:int,amount:int):
         async with aiosqlite.connect(DB_NAME) as db:
             await db.execute("UPDATE clients SET credit = credit + ? WHERE id = ?", (amount, client_id))
@@ -81,6 +84,10 @@ class ClientDbService(BaseDbService):
         
 
 class NutDbService(BaseDbService):
+
+
+    def __init__(self,table_name:str):
+        super().__init__(table_name=table_name)
 
     async def update(self,nut_id: int, delta: int):
         """Increase or decrease the number of packages for a nut."""
@@ -94,6 +101,10 @@ class NutDbService(BaseDbService):
 
 
 class RequestDbService(BaseDbService):
+
+
+    def __init__(self,table_name:str):
+        super().__init__(table_name=table_name)
 
     async def list():
         """Return all requests with related admin and nut names."""
