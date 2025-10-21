@@ -7,7 +7,7 @@ from utils.database import (
     RequestDbService
 )
 
-from utils.bot import (
+from utils.command import (
     ClientCommands,
     AdminCommands,
     NutCommands,
@@ -20,30 +20,32 @@ admin_cmds = AdminCommands(AdminDbService('admin'))
 nut_cmds = NutCommands(NutDbService('nut'))
 request_cmds = RequestCommands(RequestDbService('request'))
 
-HELP_TEXT = """*
-🧭 *Available Commands*
 
-👤 *Client Commands*
-• `/start` — Start the bot and receive a welcome message
-• `/add_client <name> [credit]` — Add a new client (optional starting credit)
-• `/list_clients` — View all clients
-• `/update_credit <client_name> <amount>` — Update a client's credit balance
+HELP_TEXT_HTML = """
+<b>🧭 Available Commands</b>
 
-🥜 *Nut Commands*
-• `/add_nut <nut_name> [packages]` — Add a new type of nut (optional package count)
-• `/list_nuts` — View all nut types
+👤 <b>Client Commands</b>
+• <code>/start</code> — Start the bot and receive a welcome message
+• <code>/add_client &lt;name&gt; [credit]</code> — Add a new client (optional starting credit)
+• <code>/list_clients</code> — View all clients
+• <code>/update_credit &lt;client_name&gt; &lt;amount&gt;</code> — Update a client's credit balance
 
-🧑‍💼 *Admin Commands* (Main admin only)
-• `/add_admin <admin_name>` — Add a new admin
-• `/list_admins` — View all admins
+🥜 <b>Nut Commands</b>
+• <code>/add_nut &lt;nut_name&gt; [packages]</code> — Add a new type of nut (optional package count)
+• <code>/list_nuts</code> — View all nut types
 
-📦 *Request Commands*
-• `/add_request <nut_name> <packages> <credit_paid> [description]` — Record a new request
-• `/list_requests` — View all requests
+🧑‍💼 <b>Admin Commands</b>
+• <code>/add_admin &lt;admin_name&gt;</code> — Add a new admin
+• <code>/list_admins</code> — View all admins
 
-💡 *Example Usage:*
-• `/add_client John 500` — Adds a client named John with 500 credit
+📦 <b>Request Commands</b>
+• <code>/add_request &lt;nut_name&gt; &lt;packages&gt; &lt;credit_paid&gt; [description]</code> — Record a new request
+• <code>/list_requests</code> — View all requests
+
+💡 <b>Example Usage:</b>
+• <code>/add_client John 500</code> — Adds a client named John with 500 credit
 """
+
 
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -75,7 +77,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.message.reply_text(HELP_TEXT, parse_mode="MarkdownV2")
+    await query.message.reply_text(
+        HELP_TEXT_HTML,
+        parse_mode="HTML"
+    )
 
 
 
@@ -106,8 +111,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await update.message.reply_text("🥜 Welcome to the Nuts Credit Manager Bot!\n\n")
-    HELP_TEXT
     await update.message.reply_text(
-        HELP_TEXT+'\n\nChoose a command:',
-        reply_markup=reply_markup
+        HELP_TEXT_HTML+'\n\nChoose a command:',
+        reply_markup=reply_markup,
+        parse_mode="HTML"
     )

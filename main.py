@@ -16,7 +16,7 @@ from utils.database import (
     NutDbService,
     RequestDbService
 )
-from utils.bot import (
+from utils.command import (
     ClientCommands,
     AdminCommands,
     NutCommands,
@@ -33,22 +33,9 @@ async def main():
 
     app = Application.builder().token(TOKEN).build()
 
-    # Client commands
     app.add_handler(CommandHandler("start", start))
-    # Conversation handler for interactive add client (asks name then credit)
-    
-    # conv_handler = ConversationHandler(
-    #     entry_points=[
-    #         CommandHandler('add_client', client_cmds.handle_add_command),
-    #         CallbackQueryHandler(client_cmds.start_interactive_add, pattern='^add_client$')
-    #     ],
-    #     states={
-    #         client_cmds.NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, client_cmds.receive_name)],
-    #         client_cmds.CREDIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, client_cmds.receive_credit)]
-    #     },
-    #     fallbacks=[CommandHandler('cancel', client_cmds.cancel)],
-    #     allow_reentry=True
-    # )
+
+    # Client commands
     conv_handler = client_cmds.generate_add_conversation_handler()
     app.add_handler(conv_handler)
     app.add_handler(CommandHandler("list_clients", client_cmds.list_cmd))
