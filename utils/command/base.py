@@ -57,11 +57,8 @@ class BaseCommand(ABC):
         return await self.start_interactive(update, context)
     
     async def handle_update_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        breakpoint()
         if context.args:
-            breakpoint()
             return await self.update_cmd(update, context)
-        breakpoint()
         return await self.start_interactive(update, context)
     
     async def start_interactive(self, update: Update, context: ContextTypes.DEFAULT_TYPE):

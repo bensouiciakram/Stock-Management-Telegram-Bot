@@ -40,6 +40,8 @@ async def init_db():
                 packages INTEGER NOT NULL,
                 credit_paid REAL DEFAULT 0,
                 description TEXT,
+                requester_id INTEGER,
+                approved INTEGER DEFAULT 0,
                 FOREIGN KEY (admin_id) REFERENCES admin(id),
                 FOREIGN KEY (nut_id) REFERENCES nut(id)
             )
@@ -57,11 +59,12 @@ class BaseDbService :
 
     async def add(self,**kwargs):
         async with aiosqlite.connect(DB_NAME) as db:
-            await db.execute(
+            cursor = await db.execute(
                 self.get_add_query(**kwargs),
                 list(kwargs.values())
             )
             await db.commit()
+            return cursor.lastrowid
 
     async def list(self):
         async with aiosqlite.connect(DB_NAME) as db:
@@ -72,3 +75,14 @@ class BaseDbService :
         async with aiosqlite.connect(DB_NAME) as db:
             cursor = await db.execute(f"SELECT * FROM {self.table_name} WHERE name=?", (name,))
             return await cursor.fetchone()
+
+    async def get_by_id(self, row_id: int):
+        async with aiosqlite.connect(DB_NAME) as db:
+            cursor = await db.execute(f"SELECT * FROM {self.table_name} WHERE id=?", (row_id,))
+            return await cursor.fetchone()
+
+    async def update_by_id(self, row_id: int, **kwargs):
+        async with aiosqlite.connect(DB_NAME) as db:
+            sets = ",".join([f"{k}=?" for k in kwargs.keys()])
+            await db.execute(f"UPDATE {self.table_name} SET {sets} WHERE id=?", [*kwargs.values(), row_id])
+            await db.commit()

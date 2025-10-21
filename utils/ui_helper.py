@@ -69,6 +69,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await admin_cmds.list_cmd(update, context)
     elif data == "add_request":
         await query.edit_message_text("Use `/add_request <nut_name> <packages> <credit_paid> [description]`", parse_mode="Markdown")
+    elif data.startswith("request:"):
+        # delegate approve/reject callbacks to request command handler
+        await request_cmds.handle_request_decision(update, context)
     elif data == "list_requests":
         await request_cmds.list_cmd(update, context)
     elif data == "help":

@@ -1,5 +1,6 @@
 from telegram import  Update
 from telegram.ext import ContextTypes,CallbackQueryHandler, ConversationHandler
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from utils.command.base import BaseCommand
 from utils.database import ClientDbService,NutDbService,AdminDbService,RequestDbService
 from utils.config import MAIN_ADMIN_ID
@@ -48,14 +49,23 @@ class RequestCommands(BaseCommand):
         if not nut:
             return await self.send_message(update,"❌ Nut not found. Add it first with /add_nut.")
 
-        # Insert request (admin[0] is admin id, nut[0] is nut id)
-        await self.db.add(admin[0], nut[0], packages, credit_paid, description)
-
-        await self.send_message(update,
-            f"✅ Request recorded by {admin_name} for {packages} × {nut_name} (paid: {credit_paid})."
+        # Insert request as pending (approved=0) and notify MAIN_ADMIN_ID with approval buttons
+        request_id = await self.db.add(
+            admin_id=admin[0],
+            nut_id=nut[0],
+            packages=packages,
+            credit_paid=credit_paid,
+            description=description,
+            requester_id=update.effective_user.id,
+            approved=0,
         )
 
-        # Notify main admin if set
+        
+        kb = InlineKeyboardMarkup([[
+            InlineKeyboardButton('✅ Approve', callback_data=f'request:approve:{request_id}'),
+            InlineKeyboardButton('❌ Reject', callback_data=f'request:reject:{request_id}')
+        ]])
+
         if MAIN_ADMIN_ID:
             await context.bot.send_message(
                 chat_id=MAIN_ADMIN_ID,
@@ -65,8 +75,11 @@ class RequestCommands(BaseCommand):
                     f"Packages: {packages}\n"
                     f"Credit Paid: {credit_paid}\n"
                     f"Note: {description or '-'}"
-                )
+                ),
+                reply_markup=kb
             )
+
+        await self.send_message(update, "✅ Your request has been recorded and is pending approval.")
 
     def define_states(self):
         # states: nut name, packages, credit_paid, description
@@ -146,9 +159,22 @@ class RequestCommands(BaseCommand):
             await self.send_message(update, "❌ Nut not found. Add it first with /add_nut.")
             return ConversationHandler.END
 
-        await self.db.add(admin_id=admin[0],nut_id=nut[0],packages=packages,credit_paid=credit_paid, description=description)
+        # Insert pending request and notify main admin
+        request_id = await self.db.add(
+            admin_id=admin[0],
+            nut_id=nut[0],
+            packages=packages,
+            credit_paid=credit_paid,
+            description=description,
+            approved=0,
+            requester_id=update.effective_user.id,
+        )
 
-        await self.send_message(update, f"✅ Request recorded by {admin_name} for {packages} × {nut_name} (paid: {credit_paid}).")
+        
+        kb = InlineKeyboardMarkup([[
+            InlineKeyboardButton('✅ Approve', callback_data=f'request:approve:{request_id}'),
+            InlineKeyboardButton('❌ Reject', callback_data=f'request:reject:{request_id}')
+        ]])
 
         if MAIN_ADMIN_ID:
             await context.bot.send_message(
@@ -159,8 +185,11 @@ class RequestCommands(BaseCommand):
                     f"Packages: {packages}\n"
                     f"Credit Paid: {credit_paid}\n"
                     f"Note: {description or '-'}"
-                )
+                ),
+                reply_markup=kb
             )
+
+        await self.send_message(update, f"✅ Request recorded by {admin_name} and is pending approval.")
 
         # cleanup
         for k in ('new_request_nut_name', 'new_request_packages', 'new_request_credit_paid'):
@@ -177,5 +206,67 @@ class RequestCommands(BaseCommand):
             for id, admin, nut, packages, credit_paid, description in requests
         ])
         await self.send_message(update,text)
+
+    async def handle_request_decision(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle approve/reject callbacks from the main admin."""
+        query = update.callback_query
+        await query.answer()
+        data = query.data  # format: request:approve:<id> or request:reject:<id>
+
+        parts = data.split(":")
+        if len(parts) != 3:
+            await query.edit_message_text("❌ Invalid action.")
+            return
+
+        action, req_id_str = parts[1], parts[2]
+        try:
+            req_id = int(req_id_str)
+        except ValueError:
+            await query.edit_message_text("❌ Invalid request id.")
+            return
+
+        # fetch request row
+        req_row = await self.db.get_by_id(req_id)
+        if not req_row:
+            await query.edit_message_text("⚠️ This request was not found.")
+            return
+
+        # BaseDbService.get_by_id returns full row; columns are: id, admin_id, nut_id, packages, credit_paid, description, requester_id, approved
+        _, admin_id, nut_id, packages, credit_paid, description, requester_id, approved = req_row
+
+        # resolve names for messages
+        admin = await self.admins_db.get_by_id(admin_id) if hasattr(self.admins_db, 'get_by_id') else None
+        nut = await self.nuts_db.get_by_id(nut_id) if hasattr(self.nuts_db, 'get_by_id') else None
+        admin_name = admin[1] if admin else 'Unknown'
+        nut_name = nut[1] if nut else 'Unknown'
+
+        # use stored requester_id (telegram chat id) to notify requester
+        requester_chat_id = requester_id
+
+        if action == 'approve':
+            # set approved flag
+            if hasattr(self.db, 'set_approved'):
+                await self.db.set_approved(req_id, True)
+            else:
+                await self.db.update_by_id(req_id, approved=1)
+
+            await query.edit_message_text(f"✅ Request approved by {update.effective_user.full_name} — {packages} × {nut_name} (paid: {credit_paid}).")
+            # notify requester
+            try:
+                await context.bot.send_message(chat_id=requester_chat_id, text=f"✅ Your request for {packages} × {nut_name} was approved.")
+            except Exception:
+                pass
+        else:
+            # rejected: set approved to 0 explicitly and notify
+            if hasattr(self.db, 'set_approved'):
+                await self.db.set_approved(req_id, False)
+            else:
+                await self.db.update_by_id(req_id, approved=0)
+
+            await query.edit_message_text(f"❌ Request rejected by {update.effective_user.full_name}.")
+            try:
+                await context.bot.send_message(chat_id=requester_chat_id, text=f"❌ Your request for {packages} × {nut_name} was rejected.")
+            except Exception:
+                pass
 
 
