@@ -24,6 +24,11 @@ class ClientCommands(BaseCommand):
             self.CREDIT:self.receive_credit
         }
 
+        self.update_states = {
+            self.NAME:self.receive_name,
+            self.CREDIT:self.receive_credit_update
+        }
+
     async def receive_name(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Receive the client's name and prompt for credit."""
         if not update.message or not update.message.text:
@@ -68,7 +73,7 @@ class ClientCommands(BaseCommand):
         text = "\n".join([f"{id}. {name} — 💰 {credit}" for id, name, credit in clients])
         await self.send_message(update, text)
 
-    async def update_credit_cmd(self,update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def update_cmd(self,update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(context.args) < 2:
             return await self.send_message(update,"Usage: /update_credit <client_name> <amount>")
         
@@ -80,3 +85,29 @@ class ClientCommands(BaseCommand):
         
         await self.db.update(client[0], amount)
         await self.send_message(update,f"✅ Updated {name}'s credit by {amount:+}. New total: {client[2] + amount}")
+
+
+    async def receive_credit_update(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Receive credit amount, validate, create client and finish conversation."""
+        if not update.message or not update.message.text:
+            await self.send_message(update, "❌ Invalid credit. Please send a number.")
+            return self.CREDIT
+
+        text = update.message.text.strip()
+        try:
+            credit = float(text)
+        except ValueError:
+            await update.message.reply_text("❌ Invalid number. Please enter a valid credit amount (e.g. 100 or 0):")
+            return self.CREDIT
+
+        name = context.user_data.get('new_client_name')
+        if not name:
+            await update.message.reply_text("❌ Missing client name. Please start again with /add_client or the button.")
+            return ConversationHandler.END
+
+        await self.db.update(name=name, credit=credit)
+        await update.message.reply_text(f"✅ Client '{name}' added with credit {credit}.")
+
+        # cleanup
+        context.user_data.pop('new_client_name', None)
+        return ConversationHandler.END

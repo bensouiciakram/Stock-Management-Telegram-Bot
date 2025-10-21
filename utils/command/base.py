@@ -41,9 +41,9 @@ class BaseCommand(ABC):
         """Each subclass must implement the 'list' command."""
         pass
 
-    @abstractmethod
-    async def start_interactive_add(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Each subclass must implement the 'start_interactive_add' """
+    
+    async def update_cmd(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Each subclass must implement the 'update' command."""
         pass
 
     # @abstractmethod
@@ -54,9 +54,17 @@ class BaseCommand(ABC):
     async def handle_add_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if context.args:
             return await self.add_cmd(update, context)
-        return await self.start_interactive_add(update, context)
+        return await self.start_interactive(update, context)
     
-    async def start_interactive_add(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def handle_update_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        breakpoint()
+        if context.args:
+            breakpoint()
+            return await self.update_cmd(update, context)
+        breakpoint()
+        return await self.start_interactive(update, context)
+    
+    async def start_interactive(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if update.callback_query:
             await update.callback_query.answer()
             await update.callback_query.message.reply_text(f"Please enter the {self.model_name}'s name:")\
@@ -77,7 +85,7 @@ class BaseCommand(ABC):
         return ConversationHandler(
         entry_points=[
             CommandHandler(f'add_{self.model_name}', self.handle_add_command),
-            CallbackQueryHandler(self.start_interactive_add, pattern=f'^add_{self.model_name}$')
+            CallbackQueryHandler(self.start_interactive, pattern=f'^add_{self.model_name}$')
         ],
         states={
             key:[MessageHandler(filters.TEXT & ~filters.COMMAND, callback)]
@@ -86,3 +94,18 @@ class BaseCommand(ABC):
         fallbacks=[CommandHandler('cancel', self.cancel)],
         allow_reentry=True
     )
+
+    def generate_update_conversation_handler(self):
+        return ConversationHandler(
+        entry_points=[
+            CommandHandler(f'update_credit', self.handle_update_command),
+            CallbackQueryHandler(self.start_interactive, pattern=f'^update_credit$')
+        ],
+        states={
+            key:[MessageHandler(filters.TEXT & ~filters.COMMAND, callback)]
+            for key,callback in self.update_states.items()
+        },
+        fallbacks=[CommandHandler('cancel', self.cancel)],
+        allow_reentry=True
+    )
+

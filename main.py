@@ -39,8 +39,8 @@ async def main():
     conv_handler = client_cmds.generate_add_conversation_handler()
     app.add_handler(conv_handler)
     app.add_handler(CommandHandler("list_clients", client_cmds.list_cmd))
-    app.add_handler(CommandHandler("update_credit", client_cmds.update_credit_cmd))
-
+    # register the ConversationHandler returned by generate_update_conversation_handler()
+    app.add_handler(client_cmds.generate_update_conversation_handler())
     # Nut commands
     app.add_handler(nut_cmds.generate_add_conversation_handler())
     app.add_handler(CommandHandler("list_nuts", nut_cmds.list_cmd))
