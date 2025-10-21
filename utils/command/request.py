@@ -200,10 +200,9 @@ class RequestCommands(BaseCommand):
         requests = await self.db.list()
         if not requests:
             return await self.send_message(update,"No requests found.")
-        
         text = "\n".join([
             f"{id}. 👤 {admin} | 🥜 {nut} | 📦 {packages} | 💰 {credit_paid} | 📝 {description or '-'}"
-            for id, admin, nut, packages, credit_paid, description in requests
+            for id, admin, nut, packages, credit_paid, description,_,_ in requests
         ])
         await self.send_message(update,text)
 
